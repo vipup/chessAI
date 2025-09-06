@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chess: Human vs Computer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; display: flex; flex-direction: column; align-items: center; }
+    .board { display: grid; grid-template-columns: repeat(8, 1fr); grid-gap: 1px; margin: 20px 0; }
+    .cell { 
+      width: 60px; 
+      height: 60px; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      cursor: pointer; 
+      position: relative;
+      font-size: 40px;
+    }
+    .cell.white { background-color: #f0d9b5; }
+    .cell.black { background-color: #b58863; }
+    .cell.selected { background-color: #aaf0aa !important; }
+    .cell.valid-move { 
+      position: relative;
+    }
+    .cell.valid-move::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background-color: rgba(0, 255, 0, 0.3);
+      border-radius: 50%;
+    }
+    .status {
+      margin: 10px 0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .controls {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chess: Human vs Computer</h1>
+  <div class="status" id="status">White's turn</div>
+  <div id="board" class="board"></div>
+  <div class="controls">
+    <button id="startGame">New Game</button>
+    <button id="undoMove">Undo Move</button>
+  </div>
+
+  <script>
+    const PIECES = {
+      white: {
+        king: '♔',
+        queen: '♕',
+        rook: '♖',
+        bishop: '♗',
+        knight: '♘',
+        pawn: '♙'
+      },
+      black: {
+        king: '♚',
+        queen: '♛',
+        rook: '♜',
+        bishop: '♝',
+        knight: '♞',
+        pawn: '♟'
+      }
+    };
+
+    let board = Array(8).fill().map(() => Array(8).fill(null));
+    let currentPlayer = 'white';
+    let selectedCell = null;
+    let gameHistory = [];
+    let validMoves = [];
+    
+    // Initialize the chess board
+    function initializeBoard() {
+      // Place pieces
+      const backRow = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
+      
+      // Set up black pieces
+      board[0] = backRow.map(piece => ({ piece, color: 'black' }));
+      board[1] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'black' }));
+      
+      // Set up white pieces
+      board[6] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'white' }));
+      board[7] = backRow.map(piece => ({ piece, color: 'white' }));
+      
+      // Empty squares
+      for (let i = 2; i < 6; i++) {
+        board[i] = Array(8).fill(null);
+      }
+    }
+
+    function renderBoard() {
+      const boardElement = document.getElementById('board');
+      boardElement.innerHTML = '';
+      
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const cell = document.createElement('div');
+          cell.className = `cell ${(row + col) % 2 === 0 ? 'white' : 'black'}`;
+          if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+            cell.classList.add('selected');
+          }
+          if (validMoves.some(move => move.row === row && move.col === col)) {
+            cell.classList.add('valid-move');
+          }
+          
+          const piece = board[row][col];
+          if (piece) {
+            cell.textContent = PIECES[piece.color][piece.piece];
+          }
+          
+          cell.addEventListener('click', () => handleCellClick(row, col));
+          boardElement.appendChild(cell);
+        }
+      }
+      
+      document.getElementById('status').textContent = `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)}'s turn`;
+    }
+
+    function handleCellClick(row, col) {
+      const clickedPiece = board[row][col];
+      
+      // If no piece is selected and clicked on own piece
+      if (!selectedCell && clickedPiece && clickedPiece.color === currentPlayer) {
+        selectedCell = { row, col };
+        validMoves = getValidMoves(row, col);
+        renderBoard();
+        return;
+      }
+      
+      // If a piece is selected
+      if (selectedCell) {
+        if (isValidMove(selectedCell.row, selectedCell.col, row, col)) {
+          makeMove(selectedCell.row, selectedCell.col, row, col);
+          if (currentPlayer === 'white') {
+            setTimeout(makeComputerMove, 500);
+          }
+        }
+        selectedCell = null;
+        validMoves = [];
+        renderBoard();
+      }
+    }
+
+    function isValidMove(fromRow, fromCol, toRow, toCol) {
+      return validMoves.some(move => move.row === toRow && move.col === toCol);
+    }
+
+    function getValidMoves(row, col) {
+      const piece = board[row][col];
+      if (!piece) return [];
+      
+      const moves = [];
+      
+      switch (piece.piece) {
+        case 'pawn':
+          const direction = piece.color === 'white' ? -1 : 1;
+          const startRow = piece.color === 'white' ? 6 : 1;
+          
+          // Forward move
+          if (!board[row + direction]?.[col]) {
+            moves.push({ row: row + direction, col });
+            // Double move from start
+            if (row === startRow && !board[row + 2 * direction]?.[col]) {
+              moves.push({ row: row + 2 * direction, col });
+            }
+          }
+          
+          // Captures
+          [[direction, -1], [direction, 1]].forEach(([dRow, dCol]) => {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (board[newRow]?.[newCol]?.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          });
+          break;
+          
+        case 'knight':
+          [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]].forEach(([dRow, dCol]) => {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (board[newRow]?.[newCol]?.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          });
+          break;
+          
+        case 'king':
+          for (let dRow = -1; dRow <= 1; dRow++) {
+            for (let dCol = -1; dCol <= 1; dCol++) {
+              if (dRow === 0 && dCol === 0) continue;
+              const newRow = row + dRow;
+              const newCol = col + dCol;
+              if (board[newRow]?.[newCol]?.color !== piece.color) {
+                moves.push({ row: newRow, col: newCol });
+              }
+            }
+          }
+          break;
+
+        case 'rook':
+          // Horizontal and vertical moves
+          [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dRow, dCol]) => {
+            let newRow = row + dRow;
+            let newCol = col + dCol;
+            while (board[newRow]?.[newCol] === null) {
+              moves.push({ row: newRow, col: newCol });
+              newRow += dRow;
+              newCol += dCol;
+            }
+            if (board[newRow]?.[newCol]?.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          });
+          break;
+
+        case 'bishop':
+          // Diagonal moves
+          [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([dRow, dCol]) => {
+            let newRow = row + dRow;
+            let newCol = col + dCol;
+            while (board[newRow]?.[newCol] === null) {
+              moves.push({ row: newRow, col: newCol });
+              newRow += dRow;
+              newCol += dCol;
+            }
+            if (board[newRow]?.[newCol]?.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          });
+          break;
+
+        case 'queen':
+          // Combine rook and bishop moves
+          [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]].forEach(([dRow, dCol]) => {
+            let newRow = row + dRow;
+            let newCol = col + dCol;
+            while (board[newRow]?.[newCol] === null) {
+              moves.push({ row: newRow, col: newCol });
+              newRow += dRow;
+              newCol += dCol;
+            }
+            if (board[newRow]?.[newCol]?.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          });
+          break;
+      }
+      
+      return moves.filter(move => 
+        move.row >= 0 && move.row < 8 && 
+        move.col >= 0 && move.col < 8
+      );
+    }
+
+    function makeMove(fromRow, fromCol, toRow, toCol) {
+      const piece = board[fromRow][fromCol];
+      gameHistory.push({
+        from: { row: fromRow, col: fromCol },
+        to: { row: toRow, col: toCol },
+        piece: { ...piece },
+        captured: board[toRow][toCol]
+      });
+      
+      board[toRow][toCol] = piece;
+      board[fromRow][fromCol] = null;
+      currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+    }
+
+    function makeComputerMove() {
+      const allMoves = [];
+      
+      // Collect all possible moves for black pieces
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const piece = board[row][col];
+          if (piece && piece.color === 'black') {
+            const moves = getValidMoves(row, col);
+            moves.forEach(move => {
+              allMoves.push({
+                from: { row, col },
+                to: move,
+                score: evaluateMove(row, col, move.row, move.col)
+              });
+            });
+          }
+        }
+      }
+      
+      if (allMoves.length > 0) {
+        // Sort moves by score and pick the best one
+        allMoves.sort((a, b) => b.score - a.score);
+        const bestMove = allMoves[0];
+        makeMove(bestMove.from.row, bestMove.from.col, bestMove.to.row, bestMove.to.col);
+        renderBoard();
+      }
+    }
+
+    function evaluateMove(fromRow, fromCol, toRow, toCol) {
+      let score = 0;
+      
+      // Piece values
+      const pieceValues = {
+        pawn: 1,
+        knight: 3,
+        bishop: 3,
+        rook: 5,
+        queen: 9,
+        king: 0
+      };
+      
+      // Add score for capturing pieces
+      const targetPiece = board[toRow][toCol];
+      if (targetPiece) {
+        score += pieceValues[targetPiece.piece] * 10;
+      }
+      
+      // Prefer center control
+      const centerDistance = Math.abs(3.5 - toRow) + Math.abs(3.5 - toCol);
+      score -= centerDistance;
+      
+      // Add some randomness
+      score += Math.random() * 0.2;
+      
+      return score;
+    }
+
+    function undoMove() {
+      if (gameHistory.length === 0) return;
+      
+      const lastMove = gameHistory.pop();
+      board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
+      board[lastMove.to.row][lastMove.to.col] = lastMove.captured;
+      currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+      renderBoard();
+    }
+
+    // Event listeners
+    document.getElementById('startGame').addEventListener('click', () => {
+      initializeBoard();
+      gameHistory = [];
+      currentPlayer = 'white';
+      selectedCell = null;
+      validMoves = [];
+      renderBoard();
+    });
+
+    document.getElementById('undoMove').addEventListener('click', undoMove);
+
+    // Start the game
+    initializeBoard();
+    renderBoard();
+  </script>
+</body>
+</html>
