@@ -73,6 +73,7 @@
     let selectedCell = null;
     let gameHistory = [];
     let validMoves = [];
+    let gameOver = false;
     
     // Initialize the chess board
     function initializeBoard() {
@@ -124,13 +125,26 @@
     function handleCellClick(row, col) {
       const clickedPiece = board[row][col];
       
+      // Don't allow moves if game is over
+      if (gameOver) return;
+      
       // Only allow moves during player's (white's) turn
       if (currentPlayer !== 'white') return;
       
       // If no piece is selected and clicked on own piece
       if (!selectedCell && clickedPiece && clickedPiece.color === 'white') {
         selectedCell = { row, col };
-        validMoves = getValidMoves(row, col);
+        validMoves = getValidMoves(row, col).filter(move => {
+          // Test each move to see if it puts/leaves own king in check
+          const originalPiece = board[move.row][move.col];
+          board[move.row][move.col] = board[row][col];
+          board[row][col] = null;
+          const inCheck = isKingInCheck('white');
+          // Undo the move
+          board[row][col] = board[move.row][move.col];
+          board[move.row][move.col] = originalPiece;
+          return !inCheck;
+        });
         renderBoard();
         return;
       }
@@ -139,12 +153,16 @@
       if (selectedCell) {
         if (isValidMove(selectedCell.row, selectedCell.col, row, col)) {
           makeMove(selectedCell.row, selectedCell.col, row, col);
-          // After player's move, make computer's move after a short delay
-          setTimeout(() => {
-            makeComputerMove();
-            currentPlayer = 'white'; // Ensure it returns to player's turn
-            renderBoard();
-          }, 500);
+          if (!gameOver) {
+            // After player's move, make computer's move after a short delay
+            setTimeout(() => {
+              makeComputerMove();
+              if (!gameOver) {
+                currentPlayer = 'white'; // Ensure it returns to player's turn
+                renderBoard();
+              }
+            }, 500);
+          }
         }
         selectedCell = null;
         validMoves = [];
@@ -264,6 +282,65 @@
       );
     }
 
+    function isKingInCheck(color) {
+      // Find king's position
+      let kingRow, kingCol;
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const piece = board[row][col];
+          if (piece && piece.piece === 'king' && piece.color === color) {
+            kingRow = row;
+            kingCol = col;
+            break;
+          }
+        }
+      }
+      
+      // Check if any opponent piece can capture the king
+      const opponentColor = color === 'white' ? 'black' : 'white';
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const piece = board[row][col];
+          if (piece && piece.color === opponentColor) {
+            const moves = getValidMoves(row, col, true);
+            if (moves.some(move => move.row === kingRow && move.col === kingCol)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function isCheckmate(color) {
+      if (!isKingInCheck(color)) return false;
+      
+      // Try all possible moves for all pieces
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const piece = board[row][col];
+          if (piece && piece.color === color) {
+            const moves = getValidMoves(row, col);
+            // Try each move and see if it gets out of check
+            for (const move of moves) {
+              const originalPiece = board[move.row][move.col];
+              board[move.row][move.col] = piece;
+              board[row][col] = null;
+              
+              const stillInCheck = isKingInCheck(color);
+              
+              // Undo the move
+              board[row][col] = piece;
+              board[move.row][move.col] = originalPiece;
+              
+              if (!stillInCheck) return false;
+            }
+          }
+        }
+      }
+      return true;
+    }
+
     function makeMove(fromRow, fromCol, toRow, toCol) {
       const piece = board[fromRow][fromCol];
       gameHistory.push({
@@ -275,7 +352,22 @@
       
       board[toRow][toCol] = piece;
       board[fromRow][fromCol] = null;
-      currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+      
+      const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+      
+      // Check for check and checkmate
+      if (isKingInCheck(nextPlayer)) {
+        if (isCheckmate(nextPlayer)) {
+          gameOver = true;
+          document.getElementById('status').textContent = 
+            `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)} wins by checkmate!`;
+        } else {
+          document.getElementById('status').textContent = 
+            `${nextPlayer.charAt(0).toUpperCase() + nextPlayer.slice(1)} is in check!`;
+        }
+      }
+      
+      currentPlayer = nextPlayer;
     }
 
     function makeComputerMove() {
@@ -325,6 +417,29 @@
       if (targetPiece) {
         score += pieceValues[targetPiece.piece] * 10;
       }
+      
+      // Test the move
+      const movingPiece = board[fromRow][fromCol];
+      board[toRow][toCol] = movingPiece;
+      board[fromRow][fromCol] = null;
+      
+      // Heavily favor moves that put opponent in check
+      if (isKingInCheck('white')) {
+        score += 15;
+        // Even more for checkmate
+        if (isCheckmate('white')) {
+          score += 1000;
+        }
+      }
+      
+      // Avoid moves that put own king in check
+      if (isKingInCheck('black')) {
+        score -= 15;
+      }
+      
+      // Undo the test move
+      board[fromRow][fromCol] = movingPiece;
+      board[toRow][toCol] = targetPiece;
       
       // Prefer center control
       const centerDistance = Math.abs(3.5 - toRow) + Math.abs(3.5 - toCol);
