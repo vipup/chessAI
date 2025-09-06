@@ -74,19 +74,35 @@
     let gameHistory = [];
     let validMoves = [];
     let gameOver = false;
+
+    function isSquareUnderAttack(row, col, defendingColor) {
+      const attackingColor = defendingColor === 'white' ? 'black' : 'white';
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const piece = board[r][c];
+          if (piece && piece.color === attackingColor) {
+            const moves = getValidMoves(r, c, true); // true to skip recursive check
+            if (moves.some(move => move.row === row && move.col === col)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
     
     // Initialize the chess board
     function initializeBoard() {
       // Place pieces
       const backRow = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
       
-      // Set up black pieces
-      board[0] = backRow.map(piece => ({ piece, color: 'black' }));
-      board[1] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'black' }));
+      // Set up black pieces with hasMoved flag
+      board[0] = backRow.map(piece => ({ piece, color: 'black', hasMoved: false }));
+      board[1] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'black', hasMoved: false }));
       
-      // Set up white pieces
-      board[6] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'white' }));
-      board[7] = backRow.map(piece => ({ piece, color: 'white' }));
+      // Set up white pieces with hasMoved flag
+      board[6] = Array(8).fill().map(() => ({ piece: 'pawn', color: 'white', hasMoved: false }));
+      board[7] = backRow.map(piece => ({ piece, color: 'white', hasMoved: false }));
       
       // Empty squares
       for (let i = 2; i < 6; i++) {
@@ -215,14 +231,61 @@
           break;
           
         case 'king':
+          // Normal king moves
           for (let dRow = -1; dRow <= 1; dRow++) {
             for (let dCol = -1; dCol <= 1; dCol++) {
               if (dRow === 0 && dCol === 0) continue;
               const newRow = row + dRow;
               const newCol = col + dCol;
-              if (board[newRow]?.[newCol]?.color !== piece.color) {
-                moves.push({ row: newRow, col: newCol });
+              
+              // Check if move is within bounds and not onto own piece
+              if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8 && 
+                  board[newRow]?.[newCol]?.color !== piece.color) {
+                
+                // Check if move would put kings adjacent
+                let adjacentToEnemyKing = false;
+                for (let checkRow = Math.max(0, newRow - 1); checkRow <= Math.min(7, newRow + 1); checkRow++) {
+                  for (let checkCol = Math.max(0, newCol - 1); checkCol <= Math.min(7, newCol + 1); checkCol++) {
+                    const checkPiece = board[checkRow][checkCol];
+                    if (checkPiece && checkPiece.piece === 'king' && checkPiece.color !== piece.color) {
+                      adjacentToEnemyKing = true;
+                    }
+                  }
+                }
+                
+                if (!adjacentToEnemyKing) {
+                  moves.push({ row: newRow, col: newCol });
+                }
               }
+            }
+          }
+          
+          // Castling moves
+          if (!piece.hasMoved) { // Only if king hasn't moved
+            const row = piece.color === 'white' ? 7 : 0;
+            
+            // Kingside castling
+            const kingsideRook = board[row][7];
+            if (kingsideRook && 
+                kingsideRook.piece === 'rook' && 
+                !kingsideRook.hasMoved && 
+                !board[row][5] && !board[row][6] && // Empty squares between
+                !isSquareUnderAttack(row, 4, piece.color) && // King's current square
+                !isSquareUnderAttack(row, 5, piece.color) && // Squares king moves through
+                !isSquareUnderAttack(row, 6, piece.color)) {
+              moves.push({ row: row, col: 6, castle: 'kingside' });
+            }
+            
+            // Queenside castling
+            const queensideRook = board[row][0];
+            if (queensideRook && 
+                queensideRook.piece === 'rook' && 
+                !queensideRook.hasMoved && 
+                !board[row][1] && !board[row][2] && !board[row][3] && // Empty squares between
+                !isSquareUnderAttack(row, 4, piece.color) && // King's current square
+                !isSquareUnderAttack(row, 3, piece.color) && // Squares king moves through
+                !isSquareUnderAttack(row, 2, piece.color)) {
+              moves.push({ row: row, col: 2, castle: 'queenside' });
             }
           }
           break;
@@ -343,11 +406,46 @@
 
     function makeMove(fromRow, fromCol, toRow, toCol) {
       const piece = board[fromRow][fromCol];
+      const capturedPiece = board[toRow][toCol];
+      const validMove = validMoves.find(move => move.row === toRow && move.col === toCol);
+      
+      // Handle castling
+      if (validMove?.castle) {
+        const row = piece.color === 'white' ? 7 : 0;
+        if (validMove.castle === 'kingside') {
+          // Move rook
+          board[row][5] = board[row][7]; // Move rook to f1/f8
+          board[row][7] = null;
+          board[row][5].hasMoved = true;
+        } else if (validMove.castle === 'queenside') {
+          // Move rook
+          board[row][3] = board[row][0]; // Move rook to d1/d8
+          board[row][0] = null;
+          board[row][3].hasMoved = true;
+        }
+      }
+      
+      // Check if a king is being captured (this shouldn't happen in proper chess)
+      if (capturedPiece && capturedPiece.piece === 'king') {
+        gameOver = true;
+        document.getElementById('status').textContent = 
+          `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)} wins by capturing the king!`;
+        // Make the move to show the final position
+        board[toRow][toCol] = piece;
+        board[fromRow][fromCol] = null;
+        return;
+      }
+
+      // Mark pieces as moved (for castling)
+      if (piece.piece === 'king' || piece.piece === 'rook') {
+        piece.hasMoved = true;
+      }
+
       gameHistory.push({
         from: { row: fromRow, col: fromCol },
         to: { row: toRow, col: toCol },
         piece: { ...piece },
-        captured: board[toRow][toCol]
+        captured: capturedPiece
       });
       
       board[toRow][toCol] = piece;
@@ -367,7 +465,9 @@
         }
       }
       
-      currentPlayer = nextPlayer;
+      if (!gameOver) {
+        currentPlayer = nextPlayer;
+      }
     }
 
     function makeComputerMove() {
