@@ -124,8 +124,11 @@
     function handleCellClick(row, col) {
       const clickedPiece = board[row][col];
       
+      // Only allow moves during player's (white's) turn
+      if (currentPlayer !== 'white') return;
+      
       // If no piece is selected and clicked on own piece
-      if (!selectedCell && clickedPiece && clickedPiece.color === currentPlayer) {
+      if (!selectedCell && clickedPiece && clickedPiece.color === 'white') {
         selectedCell = { row, col };
         validMoves = getValidMoves(row, col);
         renderBoard();
@@ -136,9 +139,12 @@
       if (selectedCell) {
         if (isValidMove(selectedCell.row, selectedCell.col, row, col)) {
           makeMove(selectedCell.row, selectedCell.col, row, col);
-          if (currentPlayer === 'white') {
-            setTimeout(makeComputerMove, 500);
-          }
+          // After player's move, make computer's move after a short delay
+          setTimeout(() => {
+            makeComputerMove();
+            currentPlayer = 'white'; // Ensure it returns to player's turn
+            renderBoard();
+          }, 500);
         }
         selectedCell = null;
         validMoves = [];
