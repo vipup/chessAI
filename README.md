@@ -64,10 +64,25 @@ The game can end in several ways:
 
 ## How to Play
 - Click on a white piece to select it
-- Valid moves are highlighted
+- Valid moves are highlighted in green
 - Click a highlighted square to move
 - The computer will respond automatically
-- The status bar shows whose turn it is and announces check/checkmate
+- The status bar shows:
+  - Current turn
+  - Check/checkmate status
+  - Draw announcements
+- Move history panel shows:
+  - All moves in standard chess notation
+  - Move numbers (1. e4 e5 2. Nf3...)
+  - Special symbols for check (+), checkmate (#), and draws (½-½)
+- Game ends automatically on:
+  - Checkmate (victory)
+  - Stalemate (draw)
+  - Threefold repetition (draw)
+  - 50-move rule (draw)
+  - Insufficient material (draw)
+- Use "Undo Move" to take back the last move pair (your move and computer's response)
+- Use "New Game" to start a fresh game
 
 ## Project Structure
 - `index.html`: Main HTML and JavaScript for the chess game
@@ -86,20 +101,25 @@ MIT
 | Board setup            |     ✅      | Standard 8x8, correct piece placement |
 | Piece movement         |     ✅      | All basic moves for each piece |
 | Turn order             |     ✅      | White moves first, alternates |
-| Check detection        |     ✅      | King in check is detected |
-| Checkmate detection    |     ✅      | Game ends on checkmate |
-| Stalemate              |     ❌      | Not implemented |
-| Draw conditions        |     ❌      | Not implemented (50-move, repetition, etc.) |
-| Castling               |     ✅      | Implemented |
-| En passant             |     ❌      | Not implemented |
-| Pawn promotion         |     ❌      | Not implemented |
-| Insufficient material  |     ❌      | Not implemented |
-| Move notation          |     ❌      | Not implemented |
-| Time controls          |     ❌      | Not implemented |
-| Resignation            |     ❌      | Not implemented |
-| Undo move              |     ✅      | Undo last move |
-| AI opponent            |     ✅      | Basic computer player (Black) |
-| Visual highlights      |     ✅      | Valid moves shown |
+| Move validation        |     ✅      | Prevents illegal moves for both players |
+| Check detection        |     ✅      | King in check is detected and shown (+) |
+| Checkmate detection    |     ✅      | Game ends on checkmate, shown with (#) |
+| Stalemate             |     ✅      | Detected and ends in draw |
+| Threefold repetition  |     ✅      | Position tracking and draw detection |
+| 50-move rule          |     ✅      | Tracks moves without captures/pawns |
+| Insufficient material |     ✅      | Detects basic drawn positions |
+| Castling              |     ✅      | Full rules including "through check" |
+| En passant            |     ❌      | Not implemented |
+| Pawn promotion        |     ❌      | Not implemented |
+| Move notation         |     ✅      | Standard algebraic notation (SAN) |
+| Move history          |     ✅      | Full panel with move numbers |
+| Time controls         |     ❌      | Not implemented |
+| Resignation           |     ❌      | Not implemented |
+| Draw offer            |     ❌      | Not implemented |
+| Undo move             |     ✅      | Full state restoration including castling |
+| AI opponent           |     ✅      | Computer plays Black, basic evaluation |
+| Visual highlights     |     ✅      | Valid moves and selected pieces shown |
+| Game state alerts     |     ✅      | Announces check, mate, and draws |
 
 **Legend:**
 - ✅ = Implemented
