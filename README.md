@@ -19,7 +19,7 @@ A browser-based chess game: Human vs Computer. This project implements standard 
 - White pieces on ranks 1-2, Black pieces on ranks 7-8
 
 ### 2. Piece Movement
-- **Pawn**: Moves forward one square; two squares from starting position; captures diagonally; promotes to Queen/Rook/Bishop/Knight when reaching the opposite end
+- **Pawn**: Moves forward one square; two squares from starting position; captures diagonally; en passant capture available; promotes to Queen/Rook/Bishop/Knight when reaching the opposite end
 - **Knight**: Moves in L-shape (2 squares in one direction, then 1 perpendicular); can jump over pieces
 - **Bishop**: Moves diagonally any number of squares
 - **Rook**: Moves horizontally or vertically any number of squares
@@ -110,7 +110,7 @@ MIT
 | 50-move rule          |     ✅      | Tracks moves without captures/pawns |
 | Insufficient material |     ✅      | Detects basic drawn positions |
 | Castling              |     ✅      | Full rules including "through check" |
-| En passant            |     ❌      | Not implemented |
+| En passant            |     ✅      | Fully implemented with two-square pawn advance detection |
 | Pawn promotion        |     ✅      | Visual dialog for piece selection |
 | Move notation         |     ✅      | Standard algebraic notation (SAN) |
 | Move history          |     ✅      | Full panel with move numbers |

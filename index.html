@@ -440,6 +440,7 @@
           }
           
           // Diagonal captures and en passant
+          console.log('Checking diagonal moves for pawn:', { piece, direction, lastMove });
           [[direction, -1], [direction, 1]].forEach(([dRow, dCol]) => {
             const newRow = row + dRow;
             const newCol = col + dCol;
@@ -453,18 +454,19 @@
                 });
               }
               // En passant
-              if (!board[newRow][newCol] && // Target square is empty
-                  lastMove && // There was a last move
+              if (lastMove && // There was a last move
                   lastMove.piece.piece === 'pawn' && // It was a pawn
                   lastMove.piece.color !== piece.color && // Enemy pawn
-                  lastMove.from.row === (piece.color === 'white' ? 1 : 6) && // Started from initial position
-                  lastMove.to.row === row && // Landed beside our pawn
-                  lastMove.to.col === newCol && // In the column we're attacking
-                  Math.abs(lastMove.from.row - lastMove.to.row) === 2) { // Moved two squares
+                  Math.abs(lastMove.from.row - lastMove.to.row) === 2 && // Enemy pawn moved two squares
+                  lastMove.to.row === row && // Enemy pawn landed beside our pawn
+                  lastMove.to.col === newCol) { // Enemy pawn is in the column we're attacking
+                // For black pawns, we need to move one square forward (down)
+                // For white pawns, we need to move one square forward (up)
+                let enPassantTargetRow = row + direction;
                 moves.push({ 
-                  row: newRow, 
-                  col: newCol, 
-                  enPassant: { row: row, col: newCol }
+                  row: enPassantTargetRow,
+                  col: newCol,
+                  enPassant: { row: lastMove.to.row, col: lastMove.to.col }
                 });
               }
             }
@@ -693,6 +695,8 @@
 
     function makeMove(fromRow, fromCol, toRow, toCol, promotionPiece) {
       const piece = board[fromRow][fromCol];
+      const initialPieceState = { ...piece }; // Save initial state for history and validation
+      const originalPiece = { ...piece };
       
       // Verify move is legal (doesn't leave/put own king in check)
       const originalTarget = board[toRow][toCol];
@@ -708,13 +712,60 @@
         return false;
       }
 
-      // Record move for history before any promotion changes
-      const originalPiece = { ...piece };
+      // Get move details
+      const move = validMoves.find(m => m.row === toRow && m.col === toCol);
+      const isEnPassant = move?.enPassant;
+      
+      if (isEnPassant) {
+        console.log('Executing en passant capture:');
+        
+        // First verify the target pawn exists
+        const capturedPiece = board[move.enPassant.row][move.enPassant.col];
+        if (!capturedPiece || capturedPiece.piece !== 'pawn') {
+          console.error('En passant capture failed - no pawn at target square:', move.enPassant);
+          return false;
+        }
+        
+        // Save move history first
+        gameHistory.push({
+          from: { row: fromRow, col: fromCol },
+          to: { row: toRow, col: toCol },
+          piece: initialPieceState,
+          captured: capturedPiece,
+          enPassant: { row: move.enPassant.row, col: move.enPassant.col },
+          movesWithoutCaptureOrPawn: movesWithoutCaptureOrPawn
+        });
+        
+        // Execute the move in the correct order
+        board[toRow][toCol] = piece; // Place capturing pawn
+        board[fromRow][fromCol] = null; // Remove from original square
+        board[move.enPassant.row][move.enPassant.col] = null; // Remove captured pawn
+        
+        // Update game state
+        movesWithoutCaptureOrPawn = 0;
+        positionHistory.push(getBoardPosition());
+        movesList.push(getMoveNotation(fromRow, fromCol, toRow, toCol, piece.piece, true));
+        lastMove = null;
+        currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+        
+        // Log final state
+        console.log('En passant capture completed. Board state:', {
+          newSquare: board[toRow][toCol],
+          oldSquare: board[fromRow][fromCol],
+          capturedSquare: board[move.enPassant.row][move.enPassant.col]
+        });
+        
+        return true;
+      }
+      
+      // Record move for history
+      const pieceState = { ...piece }; // Create copy for history
       gameHistory.push({
         from: { row: fromRow, col: fromCol },
         to: { row: toRow, col: toCol },
         piece: originalPiece,
-        captured: originalTarget,
+        captured: isEnPassant ? board[move.enPassant.row][move.enPassant.col] : originalTarget,
+        enPassant: isEnPassant ? { row: move.enPassant.row, col: move.enPassant.col } : undefined,
         movesWithoutCaptureOrPawn: movesWithoutCaptureOrPawn
       });
 
@@ -823,11 +874,25 @@
          // Normal move
          board[toRow][toCol] = piece;
          board[fromRow][fromCol] = null;
+
+         // Don't handle en passant capture here - it's already handled above
+
          // Track king/rook movement for castling
          if (piece.piece === 'king') castlingRights[piece.color].kingMoved = true;
          if (piece.piece === 'rook' && fromRow === (piece.color === 'white' ? 7 : 0)) {
            if (fromCol === 0) castlingRights[piece.color].rookMoved[0] = true;
            if (fromCol === 7) castlingRights[piece.color].rookMoved[1] = true;
+         }
+
+         // Record last move for en passant detection
+         if (piece.piece === 'pawn' && Math.abs(fromRow - toRow) === 2) {
+           lastMove = {
+             piece: piece,
+             from: { row: fromRow, col: fromCol },
+             to: { row: toRow, col: toCol }
+           };
+         } else {
+           lastMove = null;
          }
        }
       
@@ -1021,16 +1086,27 @@
       if (gameHistory.length === 0) return;
       
       const lastMove = gameHistory.pop();
-      // If last move was a castling, restore rook position too
+      if (!lastMove) return; // Nothing to undo
+      
+      // Handle different move types
       if (lastMove.castling) {
+        // Restore king
         board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
         board[lastMove.to.row][lastMove.to.col] = lastMove.captured;
-        // restore rook
+        // Restore rook
         const rf = lastMove.castling.rookFrom;
         const rt = lastMove.castling.rookTo;
         board[rf.row][rf.col] = board[rt.row][rt.col];
         board[rt.row][rt.col] = null;
+      } else if (lastMove.enPassant) {
+        // Restore capturing pawn
+        board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
+        // Remove capturing pawn from destination
+        board[lastMove.to.row][lastMove.to.col] = null;
+        // Restore captured pawn
+        board[lastMove.enPassant.row][lastMove.enPassant.col] = lastMove.captured;
       } else {
+        // Regular move
         board[lastMove.from.row][lastMove.from.col] = lastMove.piece;
         board[lastMove.to.row][lastMove.to.col] = lastMove.captured;
       }
@@ -1211,6 +1287,114 @@
       assert(pawnMoves.some(m => m.row === 5 && m.col === 1),
         "Pawn should be able to capture diagonally");
 
+      // En Passant Tests
+      console.log('\n  En Passant Tests:');
+      
+      // Test White en passant
+      initializeBoard();
+      // Setup: White pawn on e5 (board[3][4]), black pawn makes double step from d7 to d5
+      board[3][4] = { piece: 'pawn', color: 'white' }; // e5
+      board[6][4] = null; // Remove white pawn from e2
+      board[1][3] = null; // Remove black pawn from d7
+      board[3][3] = { piece: 'pawn', color: 'black' }; // d5
+      // Record black pawn's double step as the last move
+      lastMove = {
+        piece: { piece: 'pawn', color: 'black' },
+        from: { row: 1, col: 3 }, // From d7
+        to: { row: 3, col: 3 }    // To d5
+      };
+      currentPlayer = 'white';
+      
+      console.log('Test setup - Board state:', {
+        row1: JSON.stringify(board[1], null, 2),
+        row3: JSON.stringify(board[3], null, 2),
+        row6: JSON.stringify(board[6], null, 2)
+      });
+      
+      let whitePawnMoves = getValidMoves(3, 4); // Get moves for white pawn on e5
+      console.log('White pawn at:', {row: 3, col: 4});
+      console.log('White pawn moves:', JSON.stringify(whitePawnMoves, null, 2));
+      console.log('Last move state:', JSON.stringify(lastMove, null, 2));
+      console.log('Board state at rows 2-3:', {
+        row2: JSON.stringify(board[2], null, 2),
+        row3: JSON.stringify(board[3], null, 2)
+      });
+      assert(whitePawnMoves.some(m => m.row === 2 && m.col === 3 && m.enPassant),
+        "White pawn should be able to capture en passant");
+      
+      // Test Black en passant
+      initializeBoard();
+      // Set up position: black pawn on e4, white pawn makes double move from f2 to f4
+      board[4][4] = { piece: 'pawn', color: 'black' }; // e4
+      board[6][5] = null; // Remove white pawn from original position
+      board[4][5] = { piece: 'pawn', color: 'white' }; // f4
+      lastMove = {
+        piece: { piece: 'pawn', color: 'white' },
+        from: { row: 6, col: 5 }, // From f2
+        to: { row: 4, col: 5 }    // To f4
+      };
+      
+      let blackPawnMoves = getValidMoves(4, 4); // Get moves for black pawn on e5
+      console.log('Black pawn moves:', JSON.stringify(blackPawnMoves, null, 2));
+      console.log('Last move state:', JSON.stringify(lastMove, null, 2));
+      console.log('Board state at row 4:', JSON.stringify(board[4], null, 2));
+      assert(blackPawnMoves.some(m => m.row === 5 && m.col === 5 && m.enPassant),
+        "Black pawn should be able to capture en passant");
+      
+      // Test en passant execution
+      initializeBoard();
+      // Setup: Same position as white en passant test
+      board[3][4] = { piece: 'pawn', color: 'white' }; // e5
+      board[6][4] = null; // Remove from e2
+      board[1][3] = null; // Remove from d7
+      board[3][3] = { piece: 'pawn', color: 'black' }; // d5
+      lastMove = {
+        piece: { piece: 'pawn', color: 'black' },
+        from: { row: 1, col: 3 }, // From d7
+        to: { row: 3, col: 3 }    // To d5
+      };
+      currentPlayer = 'white';
+      
+      // Execute the en passant capture: white pawn from e5 takes black pawn on d5, landing on d6
+      console.log('Before en passant capture:');
+      console.log('- White pawn position:', board[3][4]);
+      console.log('- Black pawn position:', board[3][3]);
+      console.log('- Target square:', board[2][3]);
+      
+      makeMove(3, 4, 2, 3); // Use actual board coordinates
+      
+      console.log('After en passant capture:');
+      console.log('- Expected white pawn at:', {row: 2, col: 3});
+      console.log('- Expected captured pawn removed at:', {row: 3, col: 3});
+      console.log('- Expected empty original square at:', {row: 3, col: 4});
+      console.log('Actual board state:');
+      console.log('- New position:', board[2][3]);
+      console.log('- Captured pawn position:', board[3][3]);
+      console.log('- Original position:', board[3][4]);
+      
+      // Verify the en passant capture
+      const capturingPawnCorrect = board[2][3]?.piece === 'pawn' && board[2][3]?.color === 'white';
+      const capturedPawnRemoved = board[3][3] === null;
+      const originalSquareEmpty = board[3][4] === null;
+      
+      console.log('Verification results:');
+      console.log('- Capturing pawn correct:', capturingPawnCorrect);
+      console.log('- Captured pawn removed:', capturedPawnRemoved);
+      console.log('- Original square empty:', originalSquareEmpty);
+      
+      assert(capturingPawnCorrect && capturedPawnRemoved && originalSquareEmpty,
+        "En passant capture should remove captured pawn and place capturing pawn correctly");
+      
+      // Test that en passant is only available immediately after the double-step
+      initializeBoard();
+      board[3][4] = { piece: 'pawn', color: 'white' }; // e4
+      board[3][5] = { piece: 'pawn', color: 'black' }; // f5
+      lastMove = null; // No last move recorded
+      
+      whitePawnMoves = getValidMoves(3, 4);
+      assert(!whitePawnMoves.some(m => m.enPassant),
+        "En passant should not be available if the double-step didn't just happen");
+
       // Knight Tests
       let knightMoves = getValidMoves(7, 1); // White knight at b1
       assert(knightMoves.length === 2,
@@ -1250,10 +1434,14 @@
 
   // Castling through check should be disallowed
   initializeBoard();
-  // clear path for kingside
-  board[7][5] = null; board[7][6] = null; board[7][1] = null; board[7][2] = null; board[7][3] = null;
-  // place an enemy rook attacking f1 square (7,5) via rank
-  board[5][5] = { piece: 'rook', color: 'black' };
+  // Clear squares between king and rook
+  board[7][5] = null; board[7][6] = null;
+  // Place black rook to attack f1 square through which king must pass
+  board[1][5] = { piece: 'rook', color: 'black' };
+  // Clear any other pieces that might block the attack
+  board[6][5] = null; // Remove pawn that would block the rook's attack
+  castlingRights.white = { kingMoved: false, rookMoved: [false, false] };
+  
   kingMoves = getValidMoves(7,4);
   assert(!kingMoves.some(m => m.castling === 'kingside'), 'Castling through check should be disallowed');
 
