@@ -80,6 +80,7 @@
       <div class="controls">
         <button id="startGame">New Game</button>
         <button id="undoMove">Undo Move</button>
+        <button id="loadGame">Load Game</button>
       </div>
     </div>
   </div>
@@ -110,6 +111,7 @@
     let gameHistory = [];
     let validMoves = [];
     let gameOver = false;
+    let lastMove = null; // Track last move for en passant
     let movesList = [];
     let movesWithoutCaptureOrPawn = 0;
     let positionHistory = [];
@@ -368,33 +370,56 @@
       switch (piece.piece) {
         case 'pawn':
           // Rule 3: Pawn Movement
-          // - Moves forward one square
-          // - Can move two squares from starting position
-          // - Captures diagonally
           const direction = piece.color === 'white' ? -1 : 1;
           const startRow = piece.color === 'white' ? 6 : 1;
-          
-          // Forward move (never backward)
           const oneSquareAhead = row + direction;
+          const twoSquaresAhead = row + 2 * direction;
+          
+          // Forward moves
           if (oneSquareAhead >= 0 && oneSquareAhead < 8 && !board[oneSquareAhead][col]) {
-            moves.push({ row: oneSquareAhead, col });
+            moves.push({
+              row: oneSquareAhead,
+              col,
+              promotion: oneSquareAhead === 0 || oneSquareAhead === 7 ? true : undefined
+            });
             
-            // Initial two-square advance
-            const twoSquaresAhead = row + 2 * direction;
+            // Initial two-square advance from starting position
             if (row === startRow && 
                 twoSquaresAhead >= 0 && twoSquaresAhead < 8 && 
-                !board[twoSquaresAhead][col]) {
+                !board[twoSquaresAhead][col] &&
+                !board[oneSquareAhead][col]) {
               moves.push({ row: twoSquaresAhead, col });
             }
           }
           
-          // Diagonal captures
+          // Diagonal captures and en passant
           [[direction, -1], [direction, 1]].forEach(([dRow, dCol]) => {
             const newRow = row + dRow;
             const newCol = col + dCol;
-            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8 && 
-                board[newRow][newCol]?.color === (piece.color === 'white' ? 'black' : 'white')) {
-              moves.push({ row: newRow, col: newCol });
+            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+              // Regular diagonal capture
+              if (board[newRow][newCol]?.color === (piece.color === 'white' ? 'black' : 'white')) {
+                moves.push({ 
+                  row: newRow, 
+                  col: newCol,
+                  promotion: newRow === 0 || newRow === 7 ? true : undefined
+                });
+              }
+              // En passant
+              if (!board[newRow][newCol] && // Target square is empty
+                  lastMove && // There was a last move
+                  lastMove.piece.piece === 'pawn' && // It was a pawn
+                  lastMove.piece.color !== piece.color && // Enemy pawn
+                  lastMove.from.row === (piece.color === 'white' ? 1 : 6) && // Started from initial position
+                  lastMove.to.row === row && // Landed beside our pawn
+                  lastMove.to.col === newCol && // In the column we're attacking
+                  Math.abs(lastMove.from.row - lastMove.to.row) === 2) { // Moved two squares
+                moves.push({ 
+                  row: newRow, 
+                  col: newCol, 
+                  enPassant: { row: row, col: newCol }
+                });
+              }
             }
           });
           break;
@@ -406,7 +431,8 @@
           [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]].forEach(([dRow, dCol]) => {
             const newRow = row + dRow;
             const newCol = col + dCol;
-            if (board[newRow]?.[newCol]?.color !== piece.color) {
+            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8 &&
+                (!board[newRow][newCol] || board[newRow][newCol].color !== piece.color)) {
               moves.push({ row: newRow, col: newCol });
             }
           });
@@ -421,7 +447,8 @@
               if (dRow === 0 && dCol === 0) continue;
               const newRow = row + dRow;
               const newCol = col + dCol;
-              if (board[newRow]?.[newCol]?.color !== piece.color) {
+              if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8 &&
+                  (!board[newRow][newCol] || board[newRow][newCol].color !== piece.color)) {
                 moves.push({ row: newRow, col: newCol });
               }
             }
@@ -430,23 +457,35 @@
     const color = piece.color;
     const homeRow = color === 'white' ? 7 : 0;
     if (!options.ignoreCastling && row === homeRow && col === 4 && !castlingRights[color].kingMoved && !isKingInCheck(color)) {
+            // Function to check if the king passes through attacked squares
+            const testCastlingPath = (cols) => {
+              for (const c of cols) {
+                if (isSquareAttacked(homeRow, c, color)) {
+                  return false;
+                }
+              }
+              return true;
+            };
+            
             // Kingside
-            if (!castlingRights[color].rookMoved[1] && board[homeRow][5] === null && board[homeRow][6] === null &&
-                board[homeRow][7]?.piece === 'rook' && board[homeRow][7]?.color === color) {
-              // Check if any square the king passes through (including current square) is attacked
-              let safe = !isSquareAttacked(homeRow, 4, color) && 
-                        !isSquareAttacked(homeRow, 5, color) && 
-                        !isSquareAttacked(homeRow, 6, color);
-              if (safe) moves.push({ row: homeRow, col: 6, castling: 'kingside' });
+            if (!castlingRights[color].rookMoved[1] && 
+                board[homeRow][5] === null && 
+                board[homeRow][6] === null &&
+                board[homeRow][7]?.piece === 'rook' && 
+                board[homeRow][7]?.color === color &&
+                testCastlingPath([4, 5, 6])) {
+              moves.push({ row: homeRow, col: 6, castling: 'kingside' });
             }
+            
             // Queenside
-            if (!castlingRights[color].rookMoved[0] && board[homeRow][1] === null && board[homeRow][2] === null && board[homeRow][3] === null &&
-                board[homeRow][0]?.piece === 'rook' && board[homeRow][0]?.color === color) {
-              // Check if any square the king passes through (including current square) is attacked
-              let safe = !isSquareAttacked(homeRow, 4, color) && 
-                        !isSquareAttacked(homeRow, 3, color) && 
-                        !isSquareAttacked(homeRow, 2, color);
-              if (safe) moves.push({ row: homeRow, col: 2, castling: 'queenside' });
+            if (!castlingRights[color].rookMoved[0] && 
+                board[homeRow][1] === null && 
+                board[homeRow][2] === null && 
+                board[homeRow][3] === null &&
+                board[homeRow][0]?.piece === 'rook' && 
+                board[homeRow][0]?.color === color &&
+                testCastlingPath([4, 3, 2])) {
+              moves.push({ row: homeRow, col: 2, castling: 'queenside' });
             }
           }
           break;
@@ -583,7 +622,7 @@
       return true;
     }
 
-    function makeMove(fromRow, fromCol, toRow, toCol) {
+    function makeMove(fromRow, fromCol, toRow, toCol, promotionPiece) {
       const piece = board[fromRow][fromCol];
       
       // Verify move is legal (doesn't leave/put own king in check)
@@ -598,6 +637,17 @@
       if (inCheck) {
         console.log("Illegal move: leaves/puts king in check");
         return false;
+      }
+
+      // Handle pawn promotion
+      if (piece.piece === 'pawn' && (toRow === 0 || toRow === 7)) {
+        if (!promotionPiece) {
+          promotionPiece = prompt("Choose promotion piece (queen/rook/bishop/knight):", "queen");
+        }
+        if (!['queen', 'rook', 'bishop', 'knight'].includes(promotionPiece)) {
+          promotionPiece = 'queen';
+        }
+        piece.piece = promotionPiece;
       }
       
       // Update 50-move rule counter
@@ -902,6 +952,79 @@
         `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)}'s turn`;
     }
 
+    // Parse algebraic notation and apply moves
+    function parseAndApplyMoves(movesText) {
+      initializeBoard();
+      gameHistory = [];
+      movesList = [];
+      currentPlayer = 'white';
+      selectedCell = null;
+      validMoves = [];
+
+      const moves = movesText.split('\n')
+        .filter(line => line.trim() && !line.match(/^(White's turn|\d+\.$)/))
+        .map(move => move.trim());
+
+      for (let move of moves) {
+        let fromSquare = null;
+        let toSquare = null;
+        let piece = 'pawn';
+        let captureMove = move.includes('x');
+        let promotion = move.includes('=');
+        let promotionPiece = promotion ? move.split('=')[1] : null;
+
+        // Remove check/mate symbols
+        move = move.replace(/[+#]$/, '');
+
+        // Handle castling
+        if (move === 'O-O') {
+          const row = currentPlayer === 'white' ? 7 : 0;
+          makeMove(row, 4, row, 6);
+          continue;
+        } else if (move === 'O-O-O') {
+          const row = currentPlayer === 'white' ? 7 : 0;
+          makeMove(row, 4, row, 2);
+          continue;
+        }
+
+        // Parse move
+        if (move.match(/^[NBRQK]/)) {
+          piece = {
+            'N': 'knight',
+            'B': 'bishop',
+            'R': 'rook',
+            'Q': 'queen',
+            'K': 'king'
+          }[move[0]];
+          move = move.substring(1);
+        }
+
+        // Remove capture symbol
+        move = move.replace('x', '');
+
+        // Get target square
+        const col = move.charCodeAt(move.length - 2) - 97;
+        const row = 8 - parseInt(move[move.length - 1]);
+
+        // Find piece that can make this move
+        let foundPiece = false;
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            if (board[r][c]?.piece === piece && board[r][c]?.color === currentPlayer) {
+              const moves = getValidMoves(r, c);
+              if (moves.some(m => m.row === row && m.col === col)) {
+                makeMove(r, c, row, col);
+                foundPiece = true;
+                break;
+              }
+            }
+          }
+          if (foundPiece) break;
+        }
+      }
+      renderBoard();
+    }
+
     // Event listeners
     document.getElementById('startGame').addEventListener('click', () => {
       initializeBoard();
@@ -910,6 +1033,13 @@
       selectedCell = null;
       validMoves = [];
       renderBoard();
+    });
+
+    document.getElementById('loadGame').addEventListener('click', () => {
+      const movesText = prompt("Enter game moves:");
+      if (movesText) {
+        parseAndApplyMoves(movesText);
+      }
     });
 
     document.getElementById('undoMove').addEventListener('click', undoMove);
