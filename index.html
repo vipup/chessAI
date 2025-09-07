@@ -1519,9 +1519,17 @@
       initializeBoard();
     }
 
-    // Start the game with tests
-    runChessTests();
+    // Start the game and run tests in background
+    initializeBoard();
     renderBoard();
+    // Run tests without blocking game start
+    setTimeout(() => {
+      console.log('\n🔍 Running Chess Rules Test Suite in background...');
+      runChessTests();
+      // Reinitialize board after tests
+      initializeBoard();
+      renderBoard();
+    }, 100);
   </script>
 </body>
 </html>

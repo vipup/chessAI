@@ -27,6 +27,7 @@ A browser-based chess game: Human vs Computer. This project implements standard 
 - **King**: Moves one square in any direction
 
 ### 3. Special Rules
+- **En Passant**: Fully implemented with accurate capture validation and proper move history tracking
 - **Pawn Promotion**: When a pawn reaches the opposite end of the board, a dialog appears allowing selection of Queen, Rook, Bishop, or Knight
 - **Check**: King is in check if attacked by an opponent's piece
 - **Checkmate**: King is in check and cannot escape; game ends
@@ -110,7 +111,7 @@ MIT
 | 50-move rule          |     ✅      | Tracks moves without captures/pawns |
 | Insufficient material |     ✅      | Detects basic drawn positions |
 | Castling              |     ✅      | Full rules including "through check" |
-| En passant            |     ✅      | Fully implemented with two-square pawn advance detection |
+| En passant            |     ✅      | Fully implemented with two-square pawn advance detection, improved capture validation |
 | Pawn promotion        |     ✅      | Visual dialog for piece selection |
 | Move notation         |     ✅      | Standard algebraic notation (SAN) |
 | Move history          |     ✅      | Full panel with move numbers |
