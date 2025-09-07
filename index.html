@@ -66,11 +66,58 @@
     .controls {
       margin: 10px 0;
     }
+    .promotion-modal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border: 2px solid #333;
+      padding: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      z-index: 1000;
+    }
+    .promotion-modal.active {
+      display: flex;
+      flex-direction: row;
+    }
+    .promotion-piece {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 40px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      margin: 0 5px;
+    }
+    .promotion-piece:hover {
+      background-color: #e0e0e0;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+    }
+    .modal-overlay.active {
+      display: block;
+    }
   </style>
 </head>
 <body>
   <h1>Chess: Human vs Computer</h1>
   <div class="status" id="status">White's turn</div>
+  <div class="modal-overlay" id="modalOverlay"></div>
+  <div class="promotion-modal" id="promotionModal">
+    <!-- Promotion pieces will be added here dynamically -->
+  </div>
   <div class="game-container">
     <div class="moves-panel" id="movesPanel">
       <!-- Moves will be displayed here -->
@@ -622,6 +669,28 @@
       return true;
     }
 
+    function showPromotionDialog(color, callback) {
+      const modal = document.getElementById('promotionModal');
+      const overlay = document.getElementById('modalOverlay');
+      modal.innerHTML = ''; // Clear previous content
+
+      const pieces = ['queen', 'rook', 'bishop', 'knight'];
+      pieces.forEach(piece => {
+        const pieceDiv = document.createElement('div');
+        pieceDiv.className = 'promotion-piece';
+        pieceDiv.textContent = PIECES[color][piece];
+        pieceDiv.addEventListener('click', () => {
+          modal.classList.remove('active');
+          overlay.classList.remove('active');
+          callback(piece);
+        });
+        modal.appendChild(pieceDiv);
+      });
+
+      modal.classList.add('active');
+      overlay.classList.add('active');
+    }
+
     function makeMove(fromRow, fromCol, toRow, toCol, promotionPiece) {
       const piece = board[fromRow][fromCol];
       
@@ -639,16 +708,52 @@
         return false;
       }
 
+      // Record move for history before any promotion changes
+      const originalPiece = { ...piece };
+      gameHistory.push({
+        from: { row: fromRow, col: fromCol },
+        to: { row: toRow, col: toCol },
+        piece: originalPiece,
+        captured: originalTarget,
+        movesWithoutCaptureOrPawn: movesWithoutCaptureOrPawn
+      });
+
       // Handle pawn promotion
       if (piece.piece === 'pawn' && (toRow === 0 || toRow === 7)) {
         if (!promotionPiece) {
-          promotionPiece = prompt("Choose promotion piece (queen/rook/bishop/knight):", "queen");
-        }
-        if (!['queen', 'rook', 'bishop', 'knight'].includes(promotionPiece)) {
-          promotionPiece = 'queen';
+          // Show promotion dialog and wait for user selection
+          showPromotionDialog(piece.color, (selectedPiece) => {
+            piece.piece = selectedPiece;
+            completeMoveAfterPromotion(piece, fromRow, fromCol, toRow, toCol, originalTarget);
+            
+            // After promotion, let computer move
+            if (!gameOver && currentPlayer === 'black') {
+              setTimeout(() => {
+                makeComputerMove();
+                if (!gameOver) {
+                  currentPlayer = 'white';
+                  renderBoard();
+                }
+              }, 500);
+            }
+          });
+          return; // Wait for user selection
         }
         piece.piece = promotionPiece;
       }
+      
+      return completeMoveAfterPromotion(piece, fromRow, fromCol, toRow, toCol, originalTarget);
+    }
+
+    function completeMoveAfterPromotion(piece, fromRow, fromCol, toRow, toCol, originalTarget) {
+      // Execute the actual move
+      board[toRow][toCol] = piece;
+      board[fromRow][fromCol] = null;
+      
+      // If it was a pawn promotion, add the promotion symbol to the notation
+      const wasPromotion = piece.piece !== 'pawn' && 
+                          gameHistory.length > 0 && 
+                          gameHistory[gameHistory.length-1]?.piece.piece === 'pawn';
       
       // Update 50-move rule counter
       if (piece.piece === 'pawn' || originalTarget !== null) {
@@ -670,13 +775,19 @@
       });
       
       // Generate move notation
-      const notation = getMoveNotation(
+      let notation = getMoveNotation(
         fromRow, fromCol, toRow, toCol, 
         piece.piece, 
-        board[toRow][toCol] !== null,
+        originalTarget !== null,
         piece.piece === 'king' && Math.abs(toCol - fromCol) === 2 ? 
           (toCol === 6 ? 'kingside' : 'queenside') : null
       );
+      
+      // Add promotion symbol if applicable
+      if (wasPromotion) {
+        notation += '=' + piece.piece.charAt(0).toUpperCase();
+      }
+      
       movesList.push(notation);
       
       // Rule 3: Execute the move
