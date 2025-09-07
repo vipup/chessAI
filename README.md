@@ -19,7 +19,7 @@ A browser-based chess game: Human vs Computer. This project implements standard 
 - White pieces on ranks 1-2, Black pieces on ranks 7-8
 
 ### 2. Piece Movement
-- **Pawn**: Moves forward one square; two squares from starting position; captures diagonally
+- **Pawn**: Moves forward one square; two squares from starting position; captures diagonally; promotes to Queen/Rook/Bishop/Knight when reaching the opposite end
 - **Knight**: Moves in L-shape (2 squares in one direction, then 1 perpendicular); can jump over pieces
 - **Bishop**: Moves diagonally any number of squares
 - **Rook**: Moves horizontally or vertically any number of squares
@@ -27,6 +27,7 @@ A browser-based chess game: Human vs Computer. This project implements standard 
 - **King**: Moves one square in any direction
 
 ### 3. Special Rules
+- **Pawn Promotion**: When a pawn reaches the opposite end of the board, a dialog appears allowing selection of Queen, Rook, Bishop, or Knight
 - **Check**: King is in check if attacked by an opponent's piece
 - **Checkmate**: King is in check and cannot escape; game ends
 - **Stalemate**: Game ends in a draw when a player has no legal moves but is not in check
@@ -110,7 +111,7 @@ MIT
 | Insufficient material |     ✅      | Detects basic drawn positions |
 | Castling              |     ✅      | Full rules including "through check" |
 | En passant            |     ❌      | Not implemented |
-| Pawn promotion        |     ❌      | Not implemented |
+| Pawn promotion        |     ✅      | Visual dialog for piece selection |
 | Move notation         |     ✅      | Standard algebraic notation (SAN) |
 | Move history          |     ✅      | Full panel with move numbers |
 | Time controls         |     ❌      | Not implemented |
